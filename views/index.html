@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Усі замовлення</title>
+  <link rel="stylesheet" href="/style/style.css" />
+</head>
+<body>
+  <h1>Список замовлень</h1>
+  <button id="createOrderBtn">Створити нове замовлення</button>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Ім'я клієнта</th>
+        <th>Дата замовлення</th>
+        <th>Статус</th>
+        <th>Піци</th>
+        <th>Дії</th>
+      </tr>
+    </thead>
+    <tbody id="ordersTableBody"></tbody>
+  </table>
+
+  <!-- Модальне вікно -->
+  <div id="modal" style="display:none; position:fixed; top:20%; left:35%; background:white; padding:20px; border:1px solid #ccc;">
+    <h3>Нове замовлення</h3>
+    <input type="text" id="firstName" placeholder="Ім’я" required><br><br>
+    <input type="text" id="lastName" placeholder="Прізвище" required><br><br>
+    <select id="pizzaSelect" multiple size="5" style="width: 100%;"></select><br><br>
+    <button id="submitOrderBtn">Підтвердити</button>
+    <button onclick="document.getElementById('modal').style.display='none'">Скасувати</button>
+  </div>
+
+  <script>
+    async function fetchOrders() {
+      const res = await fetch('/orders');
+      const orders = await res.json();
+      const tbody = document.getElementById('ordersTableBody');
+      tbody.innerHTML = '';
+
+      orders.forEach(order => {
+        const row = document.createElement('tr');
+        const statusText = order.status === 'new' ? 'Нове замовлення!' : order.status || '—';
+        row.innerHTML = `
+          <td>${order.id}</td>
+          <td>${order.customer_name}</td>
+          <td>${new Date(order.order_date).toLocaleString()}</td>
+          <td>${statusText}</td>
+          <td>
+            <ul>${order.pizzas.map(p => `<li>${p.name} (${p.price} грн)</li>`).join('')}</ul>
+          </td>
+          <td>
+            <button class="editBtn" data-id="${order.id}">Редагувати статус</button>
+            <button class="deleteBtn" data-id="${order.id}">Видалити</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.querySelectorAll('.editBtn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const orderId = e.target.dataset.id;
+          const newStatus = prompt(`Введіть новий статус для замовлення #${orderId}:`);
+          if (!newStatus) return;
+
+          try {
+            const res = await fetch(`/orders/${orderId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+
+            if (!res.ok) throw new Error('Не вдалося оновити статус');
+            alert('Статус оновлено');
+            fetchOrders();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      });
+
+      document.querySelectorAll('.deleteBtn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const orderId = e.target.dataset.id;
+          if (!confirm(`Ви впевнені, що хочете видалити замовлення #${orderId}?`)) return;
+
+          try {
+            const res = await fetch(`/orders/${orderId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Помилка видалення');
+            fetchOrders();
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+      });
+    }
+
+    document.getElementById('createOrderBtn').addEventListener('click', async () => {
+      const pizzaSelect = document.getElementById('pizzaSelect');
+      pizzaSelect.innerHTML = '';
+
+      const pizzas = await fetch('/pizzas').then(r => r.json());
+      pizzas.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name} — ${p.price} грн`;
+        pizzaSelect.appendChild(opt);
+      });
+
+      document.getElementById('modal').style.display = 'block';
+    });
+
+    document.getElementById('submitOrderBtn').addEventListener('click', async () => {
+      const name = document.getElementById('firstName').value.trim();
+      const surname = document.getElementById('lastName').value.trim();
+      const pizzaSelect = document.getElementById('pizzaSelect');
+      const selectedPizzas = Array.from(pizzaSelect.selectedOptions).map(opt => opt.value);
+
+      if (!name || !surname || selectedPizzas.length === 0) {
+        alert('Введіть усі дані та виберіть хоча б одну піцу');
+        return;
+      }
+
+      try {
+        const resCustomer = await fetch('/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: `${name} ${surname}` })
+        });
+        const customer = await resCustomer.json();
+
+        const resOrder = await fetch('/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customer_id: customer.id })
+        });
+        const order = await resOrder.json();
+
+        for (const pizzaId of selectedPizzas) {
+          await fetch(`/orders/${order.id}/pizzas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pizza_id: pizzaId })
+          });
+        }
+
+        document.getElementById('modal').style.display = 'none';
+        fetchOrders();
+      } catch (err) {
+        alert('Помилка створення замовлення');
+      }
+    });
+
+    fetchOrders();
+  </script>
+</body>
+</html>

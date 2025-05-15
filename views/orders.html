@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Замовлення піц</title>
+  <link rel="stylesheet" href="/style/styles.css" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+    }
+    .order-card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .order-card h3 {
+      margin-top: 0;
+    }
+    .order-card ul {
+      padding-left: 20px;
+    }
+    .edit-order-btn {
+      background-color: #4caf50;
+      color: white;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .edit-order-btn:hover {
+      background-color: #45a049;
+    }
+    #createOrderBtn {
+      display: block;
+      margin: 20px auto;
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #2980b9;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #createOrderBtn:hover {
+      background-color: #2471a3;
+    }
+  </style>
+</head>
+<body>
+  <h1>Замовлення</h1>
+  <button id="createOrderBtn">Створити нове замовлення</button>
+  <div id="orders-container"></div>
+
+  <!-- Модальне вікно -->
+  <div id="modal" style="display:none; position:fixed; top:20%; left:35%; background:white; padding:20px; border:1px solid #ccc;">
+    <h3>Нове замовлення</h3>
+    <input type="text" id="firstName" placeholder="Ім’я" required><br><br>
+    <input type="text" id="lastName" placeholder="Прізвище" required><br><br>
+    <select id="pizzaSelect" multiple size="5" style="width: 100%;"></select><br><br>
+    <button id="submitOrderBtn">Підтвердити</button>
+    <button onclick="document.getElementById('modal').style.display='none'">Скасувати</button>
+  </div>
+
+  <script>
+    async function fetchOrders() {
+      try {
+        const res = await fetch('/orders');
+        if (!res.ok) throw new Error('Статус відповіді не OK');
+        return await res.json();
+      } catch (err) {
+        console.error(err);
+        alert('Помилка завантаження замовлень');
+        return [];
+      }
+    }
+
+    function createOrderCard(order) {
+      const div = document.createElement('div');
+      const statusText = order.status === 'new' ? 'Нове замовлення!' : order.status || 'не вказано';
+
+      div.classList.add('order-card');
+      div.innerHTML = `
+        <h3>Замовлення #${order.id} — ${order.customer_name}</h3>
+        <p><strong>Дата:</strong> ${new Date(order.order_date).toLocaleString()}</p>
+        <p><strong>Статус:</strong> <span id="status-${order.id}">${statusText}</span></p>
+        <p><strong>Піци:</strong></p>
+        <ul>
+          ${order.pizzas.map(p => `<li>${p.name} — ${p.price} грн</li>`).join('')}
+        </ul>
+        <button data-order-id="${order.id}" class="edit-order-btn">Редагувати статус</button>
+      `;
+      return div;
+    }
+
+    function renderOrders(orders) {
+      const container = document.getElementById('orders-container');
+      container.innerHTML = '';
+      orders.forEach(order => {
+        const card = createOrderCard(order);
+        container.appendChild(card);
+      });
+
+      document.querySelectorAll('.edit-order-btn').forEach(button => {
+        button.addEventListener('click', async (e) => {
+          const orderId = e.target.dataset.orderId;
+          const newStatus = prompt('Введіть новий статус замовлення:');
+          if (!newStatus) return;
+
+          try {
+            const res = await fetch(`/orders/${orderId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+
+            if (!res.ok) throw new Error('Не вдалося оновити статус');
+            document.getElementById(`status-${orderId}`).textContent = newStatus === 'new' ? 'Нове замовлення!' : newStatus;
+            alert('Статус оновлено');
+          } catch (err) {
+            console.error(err);
+            alert('Помилка при оновленні статусу');
+          }
+        });
+      });
+    }
+
+    document.getElementById('createOrderBtn').addEventListener('click', async () => {
+      const pizzaSelect = document.getElementById('pizzaSelect');
+      pizzaSelect.innerHTML = '';
+
+      const pizzas = await fetch('/pizzas').then(r => r.json());
+      pizzas.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name} — ${p.price} грн`;
+        pizzaSelect.appendChild(opt);
+      });
+
+      document.getElementById('modal').style.display = 'block';
+    });
+
+    document.getElementById('submitOrderBtn').addEventListener('click', async () => {
+      const name = document.getElementById('firstName').value.trim();
+      const surname = document.getElementById('lastName').value.trim();
+      const pizzaSelect = document.getElementById('pizzaSelect');
+      const selectedPizzas = Array.from(pizzaSelect.selectedOptions).map(opt => opt.value);
+
+      if (!name || !surname || selectedPizzas.length === 0) {
+        alert('Введіть усі дані та виберіть хоча б одну піцу');
+        return;
+      }
+
+      try {
+        const resCustomer = await fetch('/customers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: `${name} ${surname}` })
+        });
+        const customer = await resCustomer.json();
+
+        const resOrder = await fetch('/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ customer_id: customer.id })
+        });
+        const order = await resOrder.json();
+
+        for (const pizzaId of selectedPizzas) {
+          await fetch(`/orders/${order.id}/pizzas`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pizza_id: pizzaId })
+          });
+        }
+
+        document.getElementById('modal').style.display = 'none';
+        init();
+      } catch (err) {
+        alert('Помилка створення замовлення');
+      }
+    });
+
+    async function init() {
+      const orders = await fetchOrders();
+      renderOrders(orders);
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <title>Керування піцами</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Піци</h1>
+
+    <form id="pizzaForm">
+      <input type="hidden" id="pizzaId">
+      <input type="text" id="name" placeholder="Назва" required>
+      <input type="text" id="description" placeholder="Опис">
+      <input type="number" id="price" placeholder="Ціна" step="0.01" required>
+      <button type="submit">Зберегти піцу</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Назва</th>
+          <th>Опис</th>
+          <th>Ціна</th>
+          <th>Дії</th>
+        </tr>
+      </thead>
+      <tbody id="pizzaTableBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function fetchPizzas() {
+      const res = await fetch('/pizzas');
+      const pizzas = await res.json();
+      const tbody = document.getElementById('pizzaTableBody');
+      tbody.innerHTML = '';
+      pizzas.forEach(p => {
+        const row = `
+          <tr>
+            <td>${p.id}</td>
+            <td>${p.name}</td>
+            <td>${p.description}</td>
+            <td>${p.price}</td>
+            <td>
+              <button onclick="editPizza(${p.id}, '${p.name}', '${p.description}', ${p.price})">Редагувати</button>
+              <button onclick="deletePizza(${p.id})">Видалити</button>
+            </td>
+          </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', row);
+      });
+    }
+
+    document.getElementById('pizzaForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('pizzaId').value;
+      const name = document.getElementById('name').value;
+      const description = document.getElementById('description').value;
+      const price = parseFloat(document.getElementById('price').value);
+
+      const data = { name, description, price };
+      const url = id ? `/pizzas/${id}` : '/pizzas';
+      const method = id ? 'PUT' : 'POST';
+
+      await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      document.getElementById('pizzaForm').reset();
+      fetchPizzas();
+    });
+
+    function editPizza(id, name, description, price) {
+      document.getElementById('pizzaId').value = id;
+      document.getElementById('name').value = name;
+      document.getElementById('description').value = description;
+      document.getElementById('price').value = price;
+    }
+
+    async function deletePizza(id) {
+      if (!confirm('Видалити піцу?')) return;
+      await fetch(`/pizzas/${id}`, { method: 'DELETE' });
+      fetchPizzas();
+    }
+
+    fetchPizzas();
+  </script>
+</body>
+</html>
